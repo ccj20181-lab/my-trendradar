@@ -1,0 +1,63 @@
+name: Deploy to GitHub Pages
+
+on:
+  # 在 crawler 工作流成功后运行
+  workflow_run:
+    workflows: ["Get Hot News"]
+    types:
+      - completed
+  # 也允许手动触发
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: 检查 HTML 报告是否存在
+        id: check-html
+        run: |
+          if [ -f "output/html/latest/${{ github.event.workflow_run.head_branch || 'current' }}.html" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+
+      - name: 复制最新报告到根目录
+        run: |
+          # 查找最新的 HTML 报告
+          if [ -d "output/html/latest" ]; then
+            LATEST_HTML=$(ls -t output/html/latest/*.html 2>/dev/null | head -1)
+            if [ -n "$LATEST_HTML" ]; then
+              cp "$LATEST_HTML" index.html
+              echo "已复制: $LATEST_HTML -> index.html"
+            fi
+          fi
+        continue-on-error: true
+
+      - name: 上传到 GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
